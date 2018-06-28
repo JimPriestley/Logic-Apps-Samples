@@ -1,0 +1,121 @@
+{
+    "$connections": {
+        "value": {
+            "arm": {
+                "connectionId": "/subscriptions/<subscription ID>/resourceGroups/<<ResourceGroupName>>/providers/Microsoft.Web/connections/arm",
+                "connectionName": "arm",
+                "id": "/subscriptions/<subscription ID>/providers/Microsoft.Web/locations/eastus2/managedApis/arm"
+            },
+            "azureeventgrid": {
+                "connectionId": "/subscriptions/<subscription ID>/resourceGroups/<<ResourceGroupName>>/providers/Microsoft.Web/connections/azureeventgrid",
+                "connectionName": "azureeventgrid",
+                "id": "/subscriptions/<subscription ID>/providers/Microsoft.Web/locations/eastus2/managedApis/azureeventgrid"
+            },
+            "office365": {
+                "connectionId": "/subscriptions/<subscription ID>/resourceGroups/<<ResourceGroupName>>/providers/Microsoft.Web/connections/office365",
+                "connectionName": "office365",
+                "id": "/subscriptions/<subscription ID>/providers/Microsoft.Web/locations/eastus2/managedApis/office365"
+            }
+        }
+    },
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "Condition": {
+                "actions": {
+                    "Read_a_resource": {
+                        "inputs": {
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['arm']['connectionId']"
+                                }
+                            },
+                            "method": "get",
+                            "path": "/subscriptions/@{encodeURIComponent('<subscription ID>')}/resourcegroups/@{encodeURIComponent('<<ResourceGroupName>>')}/providers/@{encodeURIComponent('Microsoft.Compute')}/@{encodeURIComponent(concat('virtualMachineScaleSets/', last(split(triggerBody()?['Subject'], '/'))))}",
+                            "queries": {
+                                "x-ms-api-version": "2017-12-01"
+                            }
+                        },
+                        "runAfter": {},
+                        "type": "ApiConnection"
+                    },
+                    "Send_an_email": {
+                        "inputs": {
+                            "body": {
+                                "Body": "Capacity Changed to: @{body('Read_a_resource')?['sku']?['capacity']}",
+                                "Subject": "@triggerBody()?['subject']",
+                                "To": "japriest@microsoft.com"
+                            },
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['office365']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "path": "/Mail"
+                        },
+                        "runAfter": {
+                            "Read_a_resource": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "ApiConnection"
+                    }
+                },
+                "expression": {
+                    "and": [
+                        {
+                            "equals": [
+                                "@triggerBody()?['data']['operationName']",
+                                "Microsoft.Compute/virtualMachineScaleSets/write"
+                            ]
+                        }
+                    ]
+                },
+                "runAfter": {},
+                "type": "If"
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "parameters": {
+            "$connections": {
+                "defaultValue": {},
+                "type": "Object"
+            }
+        },
+        "triggers": {
+            "When_a_resource_event_occurs": {
+                "inputs": {
+                    "body": {
+                        "properties": {
+                            "destination": {
+                                "endpointType": "webhook",
+                                "properties": {
+                                    "endpointUrl": "@{listCallbackUrl()}"
+                                }
+                            },
+                            "filter": {
+                                "includedEventTypes": [
+                                    "Microsoft.Resources.ResourceWriteSuccess"
+                                ]
+                            },
+                            "topic": "/subscriptions/<subscription ID>/resourceGroups/<<ResourceGroupName>>"
+                        }
+                    },
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azureeventgrid']['connectionId']"
+                        }
+                    },
+                    "path": "/subscriptions/@{encodeURIComponent('<subscription ID>')}/providers/@{encodeURIComponent('Microsoft.Resources.ResourceGroups')}/resource/eventSubscriptions",
+                    "queries": {
+                        "x-ms-api-version": "2017-06-15-preview"
+                    }
+                },
+                "splitOn": "@triggerBody()",
+                "type": "ApiConnectionWebhook"
+            }
+        }
+    }
+}
